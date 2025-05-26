@@ -1,5 +1,12 @@
 package com.pontoall.pontoallmobile.domain.model
 
-import android.location.Location
+import com.pontoall.pontoallmobile.domain.contracts.Geolocation
 
-data class MarkPoint(val id: Int, val date: String, val time: String, val location: Location, val userId: Int)
+data class MarkPoint(
+    val id: Int = 0,
+    val date: String,
+    val time: String,
+    val location: Geolocation,
+    val photo: String,
+    val userId: Int
+)
