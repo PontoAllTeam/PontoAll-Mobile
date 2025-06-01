@@ -1,4 +1,4 @@
-package com.pontoall.pontoallmobile.domain.contracts
+package com.pontoall.pontoallmobile.domain.model
 
 data class Geolocation(
     val latitude: Double,
