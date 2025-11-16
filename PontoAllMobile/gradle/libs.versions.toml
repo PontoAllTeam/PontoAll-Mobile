@@ -1,6 +1,6 @@
 [versions]
 accompanistPermissions = "0.37.3"
-agp = "8.10.1"
+agp = "8.9.0"
 converterGson = "3.0.0"
 kotlin = "2.0.21"
 coreKtx = "1.16.0"
