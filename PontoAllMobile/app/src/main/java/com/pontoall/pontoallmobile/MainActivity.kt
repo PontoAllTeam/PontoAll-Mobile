@@ -1,4 +1,4 @@
-package com.pontoall.pontoallmobile
+package com.pontoall.pontoallmobile // <-- LINHA ADICIONADA: Declara o pacote corretamente
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -12,16 +12,25 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -30,13 +39,20 @@ import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import java.io.File
 
+// Importa a LoginScreen do seu outro arquivo
+import com.pontoall.pontoallmobile.LoginScreen // <-- ADICIONADO: Importa a LoginScreen
+import com.pontoall.pontoallmobile.DarkBlue // <-- ADICIONADO: Importa a DarkBlue (e outras se usar)
+import com.pontoall.pontoallmobile.MediumGray
+import com.pontoall.pontoallmobile.DarkPink
+import com.pontoall.pontoallmobile.White
+
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private var photoUri: Uri? = null
     private var lastLocation: Location? = null
 
-    // Contrato para tirar foto
     private val takePictureLauncher = registerForActivityResult(
         ActivityResultContracts.TakePicture()
     ) { success ->
@@ -53,18 +69,21 @@ class MainActivity : ComponentActivity() {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         setContent {
-            // A UI do nosso app
-            PontoAllApp(
-                onMarcarPontoClick = {
-                    // Lógica que acontece quando o botão é clicado
-                    obterLocalizacaoEProseguir()
-                }
-            )
+            MaterialTheme {
+                AppNavigator(
+                    onMarcarPonto = { handleMarcarPonto() }
+                )
+            }
         }
     }
 
+    // --- FUNÇÕES DE LÓGICA (câmera, localização, API) ---
+
+    fun handleMarcarPonto() {
+        obterLocalizacaoEProseguir()
+    }
+
     private fun obterLocalizacaoEProseguir() {
-        // Checamos a permissão antes de tentar obter a localização
         if (ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
@@ -91,13 +110,8 @@ class MainActivity : ComponentActivity() {
                 Log.e("MainActivity", "Erro de segurança ao obter localização.", e)
             }
         } else {
-            // Se a permissão não foi dada, o Composable cuidará de pedir.
-            // O usuário precisará clicar no botão de novo após dar a permissão.
-            Toast.makeText(
-                this,
-                "Por favor, conceda a permissão de localização e tente novamente.",
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(this, "Permissão de localização não concedida.", Toast.LENGTH_LONG)
+                .show()
         }
     }
 
@@ -109,13 +123,11 @@ class MainActivity : ComponentActivity() {
             "${applicationContext.packageName}.provider",
             photoFile
         )
-        photoUri?.let { uri ->
-            takePictureLauncher.launch(uri)
-        }
+        photoUri?.let { uri -> takePictureLauncher.launch(uri) }
     }
 
     private fun enviarDadosParaAPI() {
-        val userId = "id_do_usuario_exemplo"
+        val userId = "id_do_usuario_logado"
         val location = this.lastLocation
         val imageUri = this.photoUri
 
@@ -131,53 +143,75 @@ class MainActivity : ComponentActivity() {
         Log.d("API_CALL", "URI da Foto: $imageUri")
 
         Toast.makeText(this, "Dados prontos para envio!", Toast.LENGTH_LONG).show()
-
-        // --- A LÓGICA DE ENVIO PARA O BACKEND ENTRARÁ AQUI (usando Retrofit) ---
     }
 }
 
-// --- UI definida com Jetpack Compose ---
+// --- GERENCIADOR DE NAVEGAÇÃO ---
+@Composable
+fun AppNavigator(
+    onMarcarPonto: () -> Unit
+) {
+    val context = LocalContext.current
+    var telaAtual by remember { mutableStateOf("login") }
+
+    when (telaAtual) {
+        "login" -> {
+            LoginScreen( // Usamos a LoginScreen importada do outro arquivo
+                onLoginClicked = { email, password ->
+                    Log.d("LoginAttempt", "Email: $email, Senha (tamanho): ${password.length}")
+                    Toast.makeText(context, "Login bem-sucedido!", Toast.LENGTH_SHORT).show()
+                    telaAtual = "ponto"
+                }
+            )
+        }
+
+        "ponto" -> {
+            PontoAllApp(
+                onMarcarPontoClick = onMarcarPonto
+            )
+        }
+    }
+}
+
+// --- COMPOSABLE DA TELA DE MARCAR PONTO ---
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun PontoAllApp(onMarcarPontoClick: () -> Unit) {
     val context = LocalContext.current
-    // Gerenciador de permissões do Accompanist
     val permissionsState = rememberMultiplePermissionsState(
-        permissions = listOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.CAMERA
-        )
+        permissions = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.CAMERA)
     )
 
-    // Lançado na primeira vez que o Composable é exibido
     LaunchedEffect(Unit) {
         permissionsState.launchMultiplePermissionRequest()
     }
 
-    MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Button(onClick = {
-                    if (permissionsState.allPermissionsGranted) {
-                        // Se todas as permissões estão OK, executa a ação
-                        onMarcarPontoClick()
-                    } else {
-                        // Se não, pede de novo
-                        Toast.makeText(
-                            context,
-                            "Por favor, conceda as permissões de câmera e localização.",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        permissionsState.launchMultiplePermissionRequest()
-                    }
-                }) {
-                    Text("Marcar Ponto")
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Button(onClick = {
+                if (permissionsState.allPermissionsGranted) {
+                    onMarcarPontoClick()
+                } else {
+                    Toast.makeText(context, "Por favor, conceda as permissões.", Toast.LENGTH_LONG)
+                        .show()
+                    permissionsState.launchMultiplePermissionRequest()
                 }
+            }) {
+                Text("Marcar Ponto")
             }
         }
+    }
+}
+
+// --- PREVIEWS ---
+@Preview(showBackground = true, name = "Tela de Marcar Ponto")
+@Composable
+fun PontoAllAppPreview() {
+    MaterialTheme {
+        PontoAllApp(onMarcarPontoClick = {})
     }
 }
