@@ -1,4 +1,4 @@
-package com.pontoall.pontoallmobile // <-- LINHA ADICIONADA: Declara o pacote corretamente
+package com.pontoall.pontoallmobile
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -10,13 +10,27 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,23 +42,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
-import java.io.File
-
-// Importa a LoginScreen do seu outro arquivo
-import com.pontoall.pontoallmobile.LoginScreen // <-- ADICIONADO: Importa a LoginScreen
-import com.pontoall.pontoallmobile.DarkBlue // <-- ADICIONADO: Importa a DarkBlue (e outras se usar)
-import com.pontoall.pontoallmobile.MediumGray
+import com.pontoall.pontoallmobile.DarkBlue
 import com.pontoall.pontoallmobile.DarkPink
+import com.pontoall.pontoallmobile.LoginScreen
+import com.pontoall.pontoallmobile.MediumGray
 import com.pontoall.pontoallmobile.White
+import java.io.File
 
 
 class MainActivity : ComponentActivity() {
@@ -76,8 +93,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
-    // --- FUNÇÕES DE LÓGICA (câmera, localização, API) ---
 
     fun handleMarcarPonto() {
         obterLocalizacaoEProseguir()
@@ -143,6 +158,7 @@ class MainActivity : ComponentActivity() {
         Log.d("API_CALL", "URI da Foto: $imageUri")
 
         Toast.makeText(this, "Dados prontos para envio!", Toast.LENGTH_LONG).show()
+        // Implementar a lógica de envio real para a API aqui
     }
 }
 
@@ -156,7 +172,7 @@ fun AppNavigator(
 
     when (telaAtual) {
         "login" -> {
-            LoginScreen( // Usamos a LoginScreen importada do outro arquivo
+            LoginScreen(
                 onLoginClicked = { email, password ->
                     Log.d("LoginAttempt", "Email: $email, Senha (tamanho): ${password.length}")
                     Toast.makeText(context, "Login bem-sucedido!", Toast.LENGTH_SHORT).show()
@@ -167,16 +183,17 @@ fun AppNavigator(
 
         "ponto" -> {
             PontoAllApp(
-                onMarcarPontoClick = onMarcarPonto
+                onMarcarPontoClick = onMarcarPonto,
+                onBackToLogin = { telaAtual = "login" }
             )
         }
     }
 }
 
-// --- COMPOSABLE DA TELA DE MARCAR PONTO ---
+// --- COMPOSABLE DA TELA DE MARCAR PONTO (PontoAllApp) ---
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun PontoAllApp(onMarcarPontoClick: () -> Unit) {
+fun PontoAllApp(onMarcarPontoClick: () -> Unit, onBackToLogin: () -> Unit) {
     val context = LocalContext.current
     val permissionsState = rememberMultiplePermissionsState(
         permissions = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.CAMERA)
@@ -186,23 +203,100 @@ fun PontoAllApp(onMarcarPontoClick: () -> Unit) {
         permissionsState.launchMultiplePermissionRequest()
     }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(modifier = Modifier.fillMaxSize(), color = White) {
         Column(
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Button(onClick = {
-                if (permissionsState.allPermissionsGranted) {
-                    onMarcarPontoClick()
-                } else {
-                    Toast.makeText(context, "Por favor, conceda as permissões.", Toast.LENGTH_LONG)
-                        .show()
-                    permissionsState.launchMultiplePermissionRequest()
+            // --- TOP HEADER: Logo Centralizada e Ícone de Sair no Canto ---
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp, start = 16.dp, end = 16.dp)
+                    .height(80.dp) // Define uma altura para o header
+            ) {
+                // Logo centralizada independentemente do ícone de sair
+                Image(
+                    painter = painterResource(id = R.drawable.logopontoall),
+                    contentDescription = "Logo PontoAll",
+                    modifier = Modifier
+                        .align(Alignment.Center) // Centraliza a logo dentro da Box
+                        .size(120.dp) // Mantém o tamanho da logo
+                )
+
+                // Ícone de Sair no canto superior direito
+                IconButton(
+                    onClick = onBackToLogin,
+                    modifier = Modifier.align(Alignment.CenterEnd) // <-- AQUI FOI ALTERADO: Alinha o botão ao CENTRO e ao FIM (direita)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ExitToApp,
+                        contentDescription = "Sair para Login",
+                        tint = DarkPink,
+                        modifier = Modifier.size(24.dp) // Tamanho pequeno para o ícone
+                    )
                 }
-            }) {
-                Text("Marcar Ponto")
             }
+            // --- FIM DO TOP HEADER ---
+
+            // Spacer para empurrar o Card para o centro da página (verticalmente)
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Card principal (centralizado horizontalmente pela Column pai)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 32.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F5FB)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "Fico feliz em ter você conosco novamente. Clique no botão abaixo para fazer o registro 🥳",
+                        fontSize = 18.sp,
+                        color = DarkBlue,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    Button(
+                        onClick = {
+                            if (permissionsState.allPermissionsGranted) {
+                                onMarcarPontoClick()
+                            } else {
+                                Toast.makeText(context, "Por favor, conceda as permissões de localização e câmera.", Toast.LENGTH_LONG).show()
+                                permissionsState.launchMultiplePermissionRequest()
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DarkPink,
+                            contentColor = White
+                        )
+                    ) {
+                        Text(
+                            text = "Marcar Ponto",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // Spacer para empurrar o Card para o centro da página (verticalmente)
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }
@@ -212,6 +306,6 @@ fun PontoAllApp(onMarcarPontoClick: () -> Unit) {
 @Composable
 fun PontoAllAppPreview() {
     MaterialTheme {
-        PontoAllApp(onMarcarPontoClick = {})
+        PontoAllApp(onMarcarPontoClick = {}, onBackToLogin = {})
     }
 }
