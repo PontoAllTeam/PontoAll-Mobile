@@ -15,7 +15,7 @@ data class LoginRequest(
     val password: String
 )
 
-// 2. Classe para a resposta do login (ajuste se o seu backend for diferente)
+// 2. Classe para a resposta do login
 data class LoginResponse(
     val token: String,
     val userId: String,
@@ -28,10 +28,11 @@ interface ApiService {
     suspend fun login(@Body request: LoginRequest): LoginResponse
 }
 
-// 4. Objeto Singleton do Retrofit (já com o seu IP)
+// 4. Objeto Singleton do Retrofit
 object RetrofitClient {
-    // Usando o IP que você forneceu
-    private const val API_URL = "https://192.168.42.9:7201"
+    // MUDANÇA AQUI: Usamos 127.0.0.1 (localhost) para funcionar via cabo USB com 'adb reverse'
+    // Isso evita problemas com bloqueios de firewall da empresa ou mudança de IP do Wi-Fi
+    private const val API_URL = "https://127.0.0.1:7201"
 
     val instance: ApiService by lazy {
         val retrofit = Retrofit.Builder()
@@ -47,32 +48,24 @@ object RetrofitClient {
 object UnsafeOkHttpClient {
     fun getUnsafeOkHttpClient(): OkHttpClient {
         try {
+            // Cria um trust manager que não valida as cadeias de certificado
             val trustAllCerts = arrayOf<TrustManager>(
                 object : X509TrustManager {
-                    override fun checkClientTrusted(
-                        chain: Array<X509Certificate>,
-                        authType: String
-                    ) {
-                    }
-
-                    override fun checkServerTrusted(
-                        chain: Array<X509Certificate>,
-                        authType: String
-                    ) {
-                    }
-
-                    override fun getAcceptedIssuers(): Array<X509Certificate> =
-                        arrayOf()
+                    override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
+                    override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
+                    override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
                 }
             )
 
+            // Instala o trust manager
             val sslContext = SSLContext.getInstance("SSL")
             sslContext.init(null, trustAllCerts, SecureRandom())
             val sslSocketFactory = sslContext.socketFactory
 
             return OkHttpClient.Builder()
                 .sslSocketFactory(sslSocketFactory, trustAllCerts[0] as X509TrustManager)
-                .hostnameVerifier { _, _ -> true }.build()
+                .hostnameVerifier { _, _ -> true } // Aceita qualquer hostname (importante para 127.0.0.1)
+                .build()
         } catch (e: Exception) {
             throw RuntimeException(e)
         }
