@@ -40,6 +40,7 @@ android {
 }
 
 dependencies {
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(libs.play.services.location)
     implementation(libs.accompanist.permissions)
     implementation(libs.retrofit)

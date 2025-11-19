@@ -1,5 +1,6 @@
 package com.pontoall.pontoallmobile
 
+import LoginRequest
 import android.Manifest
 import android.content.pm.PackageManager
 import android.location.Location
@@ -11,11 +12,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,11 +56,7 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
-import com.pontoall.pontoallmobile.DarkBlue
-import com.pontoall.pontoallmobile.DarkPink
-import com.pontoall.pontoallmobile.LoginScreen
-import com.pontoall.pontoallmobile.MediumGray
-import com.pontoall.pontoallmobile.White
+import kotlinx.coroutines.launch
 import java.io.File
 
 
@@ -169,18 +165,40 @@ fun AppNavigator(
 ) {
     val context = LocalContext.current
     var telaAtual by remember { mutableStateOf("login") }
+    val coroutineScope = rememberCoroutineScope()
 
     when (telaAtual) {
         "login" -> {
             LoginScreen(
                 onLoginClicked = { email, password ->
-                    Log.d("LoginAttempt", "Email: $email, Senha (tamanho): ${password.length}")
-                    Toast.makeText(context, "Login bem-sucedido!", Toast.LENGTH_SHORT).show()
-                    telaAtual = "ponto"
+                    if (email.isBlank() || password.isBlank()) {
+                        Toast.makeText(context, "Email e senha são obrigatórios.", Toast.LENGTH_SHORT).show()
+                        return@LoginScreen
+                    }
+
+                    // Inicia a chamada de rede em uma coroutine
+                    coroutineScope.launch {
+                        try {
+                            val request = LoginRequest(email = email, password = password)
+                            Log.d("LoginAPI", "Enviando requisição para o servidor...")
+                            val response = RetrofitClient.instance.login(request)
+
+                            // Sucesso!
+                            Log.d("LoginAPI", "Login bem-sucedido! Token: ${response.token}")
+                            Toast.makeText(context, "Login bem-sucedido!", Toast.LENGTH_SHORT).show()
+
+                            // Navega para a tela de ponto
+                            telaAtual = "ponto"
+
+                        } catch (e: Exception) {
+                            // Erro!
+                            Log.e("LoginAPI", "Falha no login: ${e.message}", e)
+                            Toast.makeText(context, "Falha no login. Verifique as credenciais ou a rede.", Toast.LENGTH_LONG).show()
+                        }
+                    }
                 }
             )
         }
-
         "ponto" -> {
             PontoAllApp(
                 onMarcarPontoClick = onMarcarPonto,
@@ -189,7 +207,6 @@ fun AppNavigator(
         }
     }
 }
-
 // --- COMPOSABLE DA TELA DE MARCAR PONTO (PontoAllApp) ---
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
