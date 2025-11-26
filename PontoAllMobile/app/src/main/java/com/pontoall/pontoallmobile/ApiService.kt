@@ -9,30 +9,48 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
-// 1. Classe para o corpo da requisição de login
+data class User(
+    val id: Int,
+    val name: String,
+    val cpf: String,
+    val phone: String,
+    val email: String,
+    val recoveryEmail: String,
+    val registration: String,
+    val password: String,
+    val userType: Int,
+    val userStatus: Int,
+    val companyId: Int,
+    val sectorId: Int,
+)
+
+data class ApiResponse<T>(
+    val code: Int,
+    val data: T? = null,
+    val message: String? = null
+)
+
+// Classe para o corpo da requisição de login
 data class LoginRequest(
     val email: String,
     val password: String
 )
 
-// 2. Classe para a resposta do login
+// Classe para a resposta do login
 data class LoginResponse(
     val token: String,
-    val userId: String,
-    val name: String
+    val user: User
 )
 
-// 3. Interface da API para o Retrofit
+// Interface da API para o Retrofit
 interface ApiService {
     @POST("/api/v1/User/Login")
-    suspend fun login(@Body request: LoginRequest): LoginResponse
+    suspend fun login(@Body request: LoginRequest): ApiResponse<LoginResponse>
 }
 
-// 4. Objeto Singleton do Retrofit
+// Objeto Singleton do Retrofit
 object RetrofitClient {
-    // MUDANÇA AQUI: Usamos 127.0.0.1 (localhost) para funcionar via cabo USB com 'adb reverse'
-    // Isso evita problemas com bloqueios de firewall da empresa ou mudança de IP do Wi-Fi
-    private const val API_URL = "https://127.0.0.1:7201"
+    private const val API_URL = "https://10.0.2.2:7201"
 
     val instance: ApiService by lazy {
         val retrofit = Retrofit.Builder()
@@ -64,7 +82,7 @@ object UnsafeOkHttpClient {
 
             return OkHttpClient.Builder()
                 .sslSocketFactory(sslSocketFactory, trustAllCerts[0] as X509TrustManager)
-                .hostnameVerifier { _, _ -> true } // Aceita qualquer hostname (importante para 127.0.0.1)
+                .hostnameVerifier { _, _ -> true } // Aceita qualquer hostname (importante para 10.0.2.2)
                 .build()
         } catch (e: Exception) {
             throw RuntimeException(e)

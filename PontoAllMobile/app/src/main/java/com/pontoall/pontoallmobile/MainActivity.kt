@@ -184,8 +184,8 @@ fun AppNavigator(
                             val response = RetrofitClient.instance.login(request)
 
                             // Sucesso!
-                            Log.d("LoginAPI", "Login bem-sucedido! Token: ${response.token}")
-                            Toast.makeText(context, "Login bem-sucedido!", Toast.LENGTH_SHORT).show()
+                            Log.d("LoginAPI", "Login bem-sucedido! Token: ${response.data?.token}")
+                            Toast.makeText(context, "Login bem-sucedido! Bem vindo(a), ${response.data?.user?.name}!", Toast.LENGTH_SHORT).show()
 
                             // Navega para a tela de ponto
                             telaAtual = "ponto"
