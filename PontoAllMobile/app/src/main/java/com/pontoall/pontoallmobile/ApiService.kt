@@ -4,6 +4,7 @@ import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import java.security.SecureRandom
@@ -12,7 +13,7 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
-// --- Data Classes Existentes ---
+// --- Data Classes ---
 
 data class User(
     val id: Int,
@@ -29,20 +30,27 @@ data class User(
     val sectorId: Int,
 )
 
-// Wrapper padrão da sua API
+// Modelo para receber o histórico (GET)
+data class TimeRecordResponse(
+    val id: Int,
+    val date: String?,
+    val time: String?,
+    val latitude: Double,
+    val longitude: Double,
+    val photo: String?
+)
+
 data class ApiResponse<T>(
     val code: Int,
     val data: T? = null,
     val message: String? = null
 )
 
-// Classe para o corpo da requisição de login
 data class LoginRequest(
     val email: String,
     val password: String
 )
 
-// Classe para a resposta do login
 data class LoginResponse(
     val token: String,
     val user: User
@@ -61,26 +69,29 @@ interface ApiService {
         @Header("Authorization") token: String,
         @Body request: TimeRecordRequest
     ): ApiResponse<Any>
+
+    // Buscar Histórico (NOVO)
+    @GET("/api/v1/TimeRecord")
+    suspend fun obterHistorico(
+        @Header("Authorization") token: String
+    ): ApiResponse<List<TimeRecordResponse>>
 }
 
-// --- Configuração do Retrofit (Singleton) ---
+// --- Configuração do Retrofit ---
 
 object RetrofitClient {
-    // ATUALIZADO: IP DA FACULDADE (192.168.100.154)
-    private const val API_URL = "http://192.168.100.154:5221"
+    // ATENÇÃO: Verifique se este IP ainda é o correto da sua rede atual
+    private const val API_URL = "http://192.168.42.9:5221"
 
     val instance: ApiService by lazy {
         val retrofit = Retrofit.Builder()
             .baseUrl(API_URL)
             .addConverterFactory(GsonConverterFactory.create())
-            // Mantemos o client para evitar erros, mas no HTTP ele ignora SSL
             .client(UnsafeOkHttpClient.getUnsafeOkHttpClient())
             .build()
         retrofit.create(ApiService::class.java)
     }
 }
-
-// --- Cliente HTTP (Mantido por compatibilidade) ---
 
 object UnsafeOkHttpClient {
     fun getUnsafeOkHttpClient(): OkHttpClient {
@@ -92,7 +103,6 @@ object UnsafeOkHttpClient {
                     override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
                 }
             )
-
             val sslContext = SSLContext.getInstance("SSL")
             sslContext.init(null, trustAllCerts, SecureRandom())
             val sslSocketFactory = sslContext.socketFactory
