@@ -81,7 +81,7 @@ interface ApiService {
 
 object RetrofitClient {
     // ATENÇÃO: Verifique se este IP ainda é o correto da sua rede atual
-    private const val API_URL = "http://192.168.42.9:5221"
+    private const val API_URL = "http://192.168.100.154:5221"
 
     val instance: ApiService by lazy {
         val retrofit = Retrofit.Builder()

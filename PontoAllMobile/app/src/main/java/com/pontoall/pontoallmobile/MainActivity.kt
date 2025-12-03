@@ -128,6 +128,7 @@ class MainActivity : ComponentActivity() {
                 fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
                     if (location != null) {
                         this.lastLocation = location
+                        Log.d("MainActivity", "Localização: Lat ${location.latitude}, Lon ${location.longitude}")
                         iniciarCapturaDeFoto()
                     } else {
                         Toast.makeText(this, "GPS demorou, usando padrão.", Toast.LENGTH_SHORT).show()
@@ -192,9 +193,24 @@ class MainActivity : ComponentActivity() {
                 longitude = lonFinal,
                 userId = userIdTeste,
                 workScheduleId = workScheduleIdTeste,
-                dailyRecordId = 1,
+                dailyRecordId = 0, // ID 0 para automação do backend
                 photo = fotoString
             )
+
+            // --- LOGS PARA DEBUGAR O OBJETO ---
+            Log.d("DEBUG_OBJETO", "========================================")
+            Log.d("DEBUG_OBJETO", "PREPARANDO ENVIO PARA API...")
+            Log.d("DEBUG_OBJETO", "Data: ${novoPonto.date}")
+            Log.d("DEBUG_OBJETO", "Hora: ${novoPonto.time}")
+            Log.d("DEBUG_OBJETO", "Latitude: ${novoPonto.latitude}")
+            Log.d("DEBUG_OBJETO", "Longitude: ${novoPonto.longitude}")
+            Log.d("DEBUG_OBJETO", "UserId: ${novoPonto.userId}")
+            Log.d("DEBUG_OBJETO", "WorkScheduleId: ${novoPonto.workScheduleId}")
+            Log.d("DEBUG_OBJETO", "DailyRecordId: ${novoPonto.dailyRecordId}")
+            Log.d("DEBUG_OBJETO", "Foto (Tamanho String Base64): ${novoPonto.photo.length} caracteres")
+            Log.d("DEBUG_OBJETO", "Token usado (início): ${currentToken.take(15)}...")
+            Log.d("DEBUG_OBJETO", "========================================")
+            // ----------------------------------
 
             try {
                 val tokenFinal = if (currentToken.startsWith("Bearer ")) currentToken else "Bearer $currentToken"
