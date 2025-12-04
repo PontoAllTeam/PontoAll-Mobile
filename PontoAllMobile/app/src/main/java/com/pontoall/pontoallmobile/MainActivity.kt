@@ -426,10 +426,11 @@ fun HistoricoItem(ponto: TimeRecordResponse, onClick: () -> Unit) {
                 Icon(Icons.Filled.AccessTime, null, tint = Color(0xFFB10C43))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = ponto.time?.substringBefore(".") ?: "--:--", // <--- A MÁGICA ESTÁ AQUI
+                    text = ponto.time?.substringBefore(".") ?: "--:--",
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
-                    color = Color(0xFF021B2B))
+                    color = Color(0xFF021B2B)
+                )
             }
         }
     }
@@ -458,7 +459,7 @@ fun ComprovanteDialog(ponto: TimeRecordResponse, userName: String, onDismiss: ()
                 // Detalhes
                 DetalheLinha("Colaborador:", userName)
                 DetalheLinha("Data:", ponto.date ?: "--")
-                DetalheLinha("Horário:", ponto.time ?: "--")
+                DetalheLinha("Horário:", ponto.time?.substringBefore(".") ?: "--")
 
                 // Localização formatada
                 val lat = String.format("%.4f", ponto.latitude)
