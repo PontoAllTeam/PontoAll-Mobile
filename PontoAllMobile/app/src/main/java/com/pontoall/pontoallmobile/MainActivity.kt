@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
     // Variáveis globais de sessão
     private var currentToken: String = ""
     private var currentUserName: String = ""
+    private var currentUserId: Int = 0 // <--- ALTERADO: Variável para guardar o ID real
 
     // Estado global de carregamento
     private var isProcessing by mutableStateOf(false)
@@ -93,10 +94,12 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 AppNavigator(
                     isLoading = isProcessing,
-                    onMarcarPonto = { token, nome, callback ->
+                    // <--- ALTERADO: Callback agora recebe (token, nome, userId, callback)
+                    onMarcarPonto = { token, nome, userId, callback ->
                         this.currentToken = token
                         this.currentUserName = nome
-                        this.onPontoRegistradoCallback = callback // Guarda o callback que recebe o objeto
+                        this.currentUserId = userId // <--- ALTERADO: Guarda o ID recebido do Login
+                        this.onPontoRegistradoCallback = callback
 
                         isProcessing = true
                         handleMarcarPonto()
@@ -162,8 +165,8 @@ class MainActivity : ComponentActivity() {
 
     private fun enviarDadosParaAPI() {
         val location = this.lastLocation
-        val userIdTeste = 1
-        val workScheduleIdTeste = 1
+        // val userIdTeste = 1 // <--- ALTERADO: Removido valor hardcoded
+        val workScheduleIdTeste = 0 // Backend ignora, pode mandar 0
         val latFinal = location?.latitude ?: -20.469394
         val lonFinal = location?.longitude ?: -50.635562
         val agora = Date()
@@ -178,7 +181,7 @@ class MainActivity : ComponentActivity() {
                 time = timeFormat.format(agora),
                 latitude = latFinal,
                 longitude = lonFinal,
-                userId = userIdTeste,
+                userId = this@MainActivity.currentUserId, // <--- ALTERADO: Usando o ID real do usuário
                 workScheduleId = workScheduleIdTeste,
                 dailyRecordId = 0,
                 photo = fotoString
@@ -187,15 +190,12 @@ class MainActivity : ComponentActivity() {
             try {
                 val tokenFinal = if (currentToken.startsWith("Bearer ")) currentToken else "Bearer $currentToken"
 
-                // O RegistrarPonto agora retorna um ApiResponse<TimeRecordResponse>
                 val response = RetrofitClient.instance.registrarPonto(tokenFinal, novoPonto)
 
                 withContext(Dispatchers.Main) {
                     if (response.code == 200 || response.code == 201 || response.message?.contains("sucesso", ignoreCase = true) == true) {
                         Toast.makeText(this@MainActivity, "Ponto Registrado! ✅", Toast.LENGTH_SHORT).show()
 
-                        // Prepara o objeto para o comprovante
-                        // Se o backend devolveu 'data', usamos ele. Se não, usamos os dados que enviamos.
                         val pontoCriado = response.data ?: TimeRecordResponse(
                             id = 0,
                             date = novoPonto.date,
@@ -205,7 +205,6 @@ class MainActivity : ComponentActivity() {
                             photo = null
                         )
 
-                        // Chama o callback passando o objeto do ponto
                         onPontoRegistradoCallback?.invoke(pontoCriado)
                     } else {
                         Toast.makeText(this@MainActivity, "Erro: ${response.message}", Toast.LENGTH_LONG).show()
@@ -231,12 +230,15 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigator(
     isLoading: Boolean,
-    onMarcarPonto: (String, String, (TimeRecordResponse) -> Unit) -> Unit
+    // <--- ALTERADO: Adicionado parâmetro Int (userId) na assinatura do callback
+    onMarcarPonto: (String, String, Int, (TimeRecordResponse) -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     var telaAtual by remember { mutableStateOf("login") }
     var userToken by remember { mutableStateOf("") }
     var userName by remember { mutableStateOf("") }
+    var userId by remember { mutableStateOf(0) } // <--- ALTERADO: Estado para guardar o ID
+
     val coroutineScope = rememberCoroutineScope()
 
     when (telaAtual) {
@@ -255,6 +257,8 @@ fun AppNavigator(
                             if (response.code == 200 || response.message?.contains("sucesso", ignoreCase = true) == true) {
                                 userToken = response.data?.token ?: ""
                                 userName = response.data?.user?.name ?: "Colaborador"
+                                userId = response.data?.user?.id ?: 0 // <--- ALTERADO: Obtendo o ID do usuário
+
                                 Toast.makeText(context, "Bem vindo, $userName!", Toast.LENGTH_SHORT).show()
                                 telaAtual = "home"
                             } else {
@@ -271,6 +275,7 @@ fun AppNavigator(
         "home" -> {
             HomeScreen(
                 userName = userName,
+                userId = userId, // <--- ALTERADO: Passando o ID para a Home
                 userToken = userToken,
                 isGlobalLoading = isLoading,
                 onMarcarPontoClick = onMarcarPonto,
@@ -285,9 +290,11 @@ fun AppNavigator(
 @Composable
 fun HomeScreen(
     userName: String,
+    userId: Int, // <--- ALTERADO: Recebendo o ID
     userToken: String,
     isGlobalLoading: Boolean,
-    onMarcarPontoClick: (String, String, (TimeRecordResponse) -> Unit) -> Unit,
+    // <--- ALTERADO: Adicionado Int na assinatura do callback
+    onMarcarPontoClick: (String, String, Int, (TimeRecordResponse) -> Unit) -> Unit,
     onBackToLogin: () -> Unit
 ) {
     val context = LocalContext.current
@@ -328,7 +335,6 @@ fun HomeScreen(
     LaunchedEffect(Unit, refreshTrigger) { carregarHistorico() }
     LaunchedEffect(Unit) { permissionsState.launchMultiplePermissionRequest() }
 
-    // --- DIALOG DO COMPROVANTE ---
     if (showComprovante && pontoSelecionado != null) {
         ComprovanteDialog(
             ponto = pontoSelecionado!!,
@@ -347,6 +353,10 @@ fun HomeScreen(
             }
             Spacer(modifier = Modifier.height(24.dp))
             Text("Olá, $userName! 👋", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF021B2B))
+
+            // Debug visual (Opcional, pode remover depois)
+            // Text("ID Usuário: $userId", fontSize = 12.sp, color = Color.Gray)
+
             Spacer(modifier = Modifier.height(24.dp))
 
             // Botão de Registro
@@ -354,11 +364,11 @@ fun HomeScreen(
                 onClick = {
                     if (!isGlobalLoading) {
                         if (permissionsState.allPermissionsGranted) {
-                            onMarcarPontoClick(userToken, userName) { pontoCriado ->
-                                // SUCESSO NO REGISTRO:
-                                refreshTrigger++         // 1. Atualiza lista
-                                pontoSelecionado = pontoCriado // 2. Define dados
-                                showComprovante = true   // 3. Abre comprovante
+                            // <--- ALTERADO: Passando o userId aqui
+                            onMarcarPontoClick(userToken, userName, userId) { pontoCriado ->
+                                refreshTrigger++
+                                pontoSelecionado = pontoCriado
+                                showComprovante = true
                             }
                         } else {
                             permissionsState.launchMultiplePermissionRequest()
@@ -383,7 +393,6 @@ fun HomeScreen(
             LazyColumn(modifier = Modifier.padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(historicoList) { ponto ->
                     HistoricoItem(ponto, onClick = {
-                        // CLIQUE NO ITEM DO HISTÓRICO
                         pontoSelecionado = ponto
                         showComprovante = true
                     })
@@ -399,7 +408,7 @@ fun HistoricoItem(ponto: TimeRecordResponse, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }, // Torna o card clicável
+            .clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -416,7 +425,11 @@ fun HistoricoItem(ponto: TimeRecordResponse, onClick: () -> Unit) {
             Row {
                 Icon(Icons.Filled.AccessTime, null, tint = Color(0xFFB10C43))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(ponto.time ?: "--:--", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF021B2B))
+                Text(
+                    text = ponto.time?.substringBefore(".") ?: "--:--", // <--- A MÁGICA ESTÁ AQUI
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = Color(0xFF021B2B))
             }
         }
     }

@@ -80,14 +80,17 @@ interface ApiService {
 // --- Configuração do Retrofit ---
 
 object RetrofitClient {
-    // ATENÇÃO: Verifique se este IP (192.168.100.154) é o correto onde você está agora
-    private const val API_URL = "http://192.168.42.6:5221"
+    private const val API_URL = "http://127.0.0.1:5221"
 
     val instance: ApiService by lazy {
+        // Crie um cliente OkHttp padrão.
+        val okHttpClient = OkHttpClient.Builder().build()
+
         val retrofit = Retrofit.Builder()
             .baseUrl(API_URL)
             .addConverterFactory(GsonConverterFactory.create())
-            .client(UnsafeOkHttpClient.getUnsafeOkHttpClient())
+            // Use o cliente padrão simples.
+            .client(okHttpClient)
             .build()
         retrofit.create(ApiService::class.java)
     }
