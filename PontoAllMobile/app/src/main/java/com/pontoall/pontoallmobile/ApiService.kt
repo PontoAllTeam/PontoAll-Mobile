@@ -30,7 +30,7 @@ data class User(
     val sectorId: Int,
 )
 
-// Modelo para receber o histórico (GET)
+// Modelo para receber o histórico (GET) e o Retorno do Registro (POST)
 data class TimeRecordResponse(
     val id: Int,
     val date: String?,
@@ -63,14 +63,14 @@ interface ApiService {
     @POST("/api/v1/User/Login")
     suspend fun login(@Body request: LoginRequest): ApiResponse<LoginResponse>
 
-    // Bater Ponto
+    // Bater Ponto - ATUALIZADO PARA RETORNAR O DADO DO PONTO (PARA O COMPROVANTE)
     @POST("/api/v1/TimeRecord")
     suspend fun registrarPonto(
         @Header("Authorization") token: String,
         @Body request: TimeRecordRequest
-    ): ApiResponse<Any>
+    ): ApiResponse<TimeRecordResponse> // <--- MUDANÇA AQUI: De Any para TimeRecordResponse
 
-    // Buscar Histórico (NOVO)
+    // Buscar Histórico
     @GET("/api/v1/TimeRecord")
     suspend fun obterHistorico(
         @Header("Authorization") token: String
@@ -80,8 +80,8 @@ interface ApiService {
 // --- Configuração do Retrofit ---
 
 object RetrofitClient {
-    // ATENÇÃO: Verifique se este IP ainda é o correto da sua rede atual
-    private const val API_URL = "http://192.168.100.154:5221"
+    // ATENÇÃO: Verifique se este IP (192.168.100.154) é o correto onde você está agora
+    private const val API_URL = "http://192.168.42.6:5221"
 
     val instance: ApiService by lazy {
         val retrofit = Retrofit.Builder()

@@ -15,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -36,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
@@ -54,21 +57,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// OBS: Se der erro de "Unresolved reference: TimeRecordResponse",
-// significa que faltou essa classe no seu ApiService.kt.
-// Se der erro de "Redeclaration", apague esta classe daqui de baixo.
-// Vou deixar comentado aqui caso você precise, mas o ideal é estar no ApiService.
-/*
-data class TimeRecordResponse(
-    val id: Int,
-    val date: String?,
-    val time: String?,
-    val latitude: Double,
-    val longitude: Double,
-    val photo: String?
-)
-*/
-
 class MainActivity : ComponentActivity() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -82,8 +70,8 @@ class MainActivity : ComponentActivity() {
     // Estado global de carregamento
     private var isProcessing by mutableStateOf(false)
 
-    // Callback para atualizar a lista
-    private var onPontoRegistradoCallback: (() -> Unit)? = null
+    // Callback atualizado: Agora ele devolve o objeto do Ponto para mostrar o comprovante
+    private var onPontoRegistradoCallback: ((TimeRecordResponse) -> Unit)? = null
 
     private val takePictureLauncher = registerForActivityResult(
         ActivityResultContracts.TakePicture()
@@ -108,7 +96,7 @@ class MainActivity : ComponentActivity() {
                     onMarcarPonto = { token, nome, callback ->
                         this.currentToken = token
                         this.currentUserName = nome
-                        this.onPontoRegistradoCallback = callback
+                        this.onPontoRegistradoCallback = callback // Guarda o callback que recebe o objeto
 
                         isProcessing = true
                         handleMarcarPonto()
@@ -128,7 +116,6 @@ class MainActivity : ComponentActivity() {
                 fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
                     if (location != null) {
                         this.lastLocation = location
-                        Log.d("MainActivity", "Localização: Lat ${location.latitude}, Lon ${location.longitude}")
                         iniciarCapturaDeFoto()
                     } else {
                         Toast.makeText(this, "GPS demorou, usando padrão.", Toast.LENGTH_SHORT).show()
@@ -142,7 +129,7 @@ class MainActivity : ComponentActivity() {
                 isProcessing = false
             }
         } else {
-            Toast.makeText(this, "Permissão de localização necessária.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Permissão necessária.", Toast.LENGTH_LONG).show()
             isProcessing = false
         }
     }
@@ -193,33 +180,33 @@ class MainActivity : ComponentActivity() {
                 longitude = lonFinal,
                 userId = userIdTeste,
                 workScheduleId = workScheduleIdTeste,
-                dailyRecordId = 0, // ID 0 para automação do backend
+                dailyRecordId = 0,
                 photo = fotoString
             )
 
-            // --- LOGS PARA DEBUGAR O OBJETO ---
-            Log.d("DEBUG_OBJETO", "========================================")
-            Log.d("DEBUG_OBJETO", "PREPARANDO ENVIO PARA API...")
-            Log.d("DEBUG_OBJETO", "Data: ${novoPonto.date}")
-            Log.d("DEBUG_OBJETO", "Hora: ${novoPonto.time}")
-            Log.d("DEBUG_OBJETO", "Latitude: ${novoPonto.latitude}")
-            Log.d("DEBUG_OBJETO", "Longitude: ${novoPonto.longitude}")
-            Log.d("DEBUG_OBJETO", "UserId: ${novoPonto.userId}")
-            Log.d("DEBUG_OBJETO", "WorkScheduleId: ${novoPonto.workScheduleId}")
-            Log.d("DEBUG_OBJETO", "DailyRecordId: ${novoPonto.dailyRecordId}")
-            Log.d("DEBUG_OBJETO", "Foto (Tamanho String Base64): ${novoPonto.photo.length} caracteres")
-            Log.d("DEBUG_OBJETO", "Token usado (início): ${currentToken.take(15)}...")
-            Log.d("DEBUG_OBJETO", "========================================")
-            // ----------------------------------
-
             try {
                 val tokenFinal = if (currentToken.startsWith("Bearer ")) currentToken else "Bearer $currentToken"
+
+                // O RegistrarPonto agora retorna um ApiResponse<TimeRecordResponse>
                 val response = RetrofitClient.instance.registrarPonto(tokenFinal, novoPonto)
 
                 withContext(Dispatchers.Main) {
                     if (response.code == 200 || response.code == 201 || response.message?.contains("sucesso", ignoreCase = true) == true) {
-                        Toast.makeText(this@MainActivity, "Ponto Registrado com Sucesso! ✅", Toast.LENGTH_LONG).show()
-                        onPontoRegistradoCallback?.invoke()
+                        Toast.makeText(this@MainActivity, "Ponto Registrado! ✅", Toast.LENGTH_SHORT).show()
+
+                        // Prepara o objeto para o comprovante
+                        // Se o backend devolveu 'data', usamos ele. Se não, usamos os dados que enviamos.
+                        val pontoCriado = response.data ?: TimeRecordResponse(
+                            id = 0,
+                            date = novoPonto.date,
+                            time = novoPonto.time,
+                            latitude = novoPonto.latitude,
+                            longitude = novoPonto.longitude,
+                            photo = null
+                        )
+
+                        // Chama o callback passando o objeto do ponto
+                        onPontoRegistradoCallback?.invoke(pontoCriado)
                     } else {
                         Toast.makeText(this@MainActivity, "Erro: ${response.message}", Toast.LENGTH_LONG).show()
                     }
@@ -228,11 +215,10 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.Main) {
                     val msgErro = when (e) {
                         is SocketTimeoutException -> "Tempo limite esgotado."
-                        is ConnectException -> "Não foi possível conectar ao servidor."
+                        is ConnectException -> "Servidor indisponível."
                         else -> "Erro: ${e.localizedMessage}"
                     }
                     Toast.makeText(this@MainActivity, msgErro, Toast.LENGTH_LONG).show()
-                    Log.e("API_CALL", "Erro detalhado: ", e)
                 }
             } finally {
                 isProcessing = false
@@ -245,15 +231,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigator(
     isLoading: Boolean,
-    onMarcarPonto: (String, String, () -> Unit) -> Unit
+    onMarcarPonto: (String, String, (TimeRecordResponse) -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     var telaAtual by remember { mutableStateOf("login") }
     var userToken by remember { mutableStateOf("") }
     var userName by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
-
-    var refreshTrigger by remember { mutableStateOf(0) }
 
     when (telaAtual) {
         "login" -> {
@@ -268,23 +252,17 @@ fun AppNavigator(
                             val request = LoginRequest(email = email, password = password)
                             val response = RetrofitClient.instance.login(request)
 
-                            // --- CORREÇÃO DO LOGIN AQUI ---
-                            // Agora aceita se o código for 200 OU se a mensagem disser "sucesso"
                             if (response.code == 200 || response.message?.contains("sucesso", ignoreCase = true) == true) {
-                                val tokenRecebido = response.data?.token ?: ""
-                                val nomeRecebido = response.data?.user?.name ?: "Colaborador"
-
-                                userToken = tokenRecebido
-                                userName = nomeRecebido
-
-                                Toast.makeText(context, "Bem vindo, $nomeRecebido!", Toast.LENGTH_SHORT).show()
+                                userToken = response.data?.token ?: ""
+                                userName = response.data?.user?.name ?: "Colaborador"
+                                Toast.makeText(context, "Bem vindo, $userName!", Toast.LENGTH_SHORT).show()
                                 telaAtual = "home"
                             } else {
                                 Toast.makeText(context, "Erro: ${response.message}", Toast.LENGTH_LONG).show()
                             }
                         } catch (e: Exception) {
                             val msg = if (e is ConnectException) "Backend offline" else "Erro no login"
-                            Toast.makeText(context, "$msg: ${e.message}", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                         }
                     }
                 }
@@ -295,27 +273,21 @@ fun AppNavigator(
                 userName = userName,
                 userToken = userToken,
                 isGlobalLoading = isLoading,
-                refreshTrigger = refreshTrigger,
-                onMarcarPontoClick = {
-                    onMarcarPonto(userToken, userName) {
-                        refreshTrigger++
-                    }
-                },
-                onBackToLogin = { telaAtual = "login"; userToken = ""; userName = "" }
+                onMarcarPontoClick = onMarcarPonto,
+                onBackToLogin = { telaAtual = "login" }
             )
         }
     }
 }
 
-// --- TELA HOME COMPLETA ---
+// --- TELA HOME ---
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun HomeScreen(
     userName: String,
     userToken: String,
     isGlobalLoading: Boolean,
-    refreshTrigger: Int,
-    onMarcarPontoClick: () -> Unit,
+    onMarcarPontoClick: (String, String, (TimeRecordResponse) -> Unit) -> Unit,
     onBackToLogin: () -> Unit
 ) {
     val context = LocalContext.current
@@ -325,6 +297,12 @@ fun HomeScreen(
 
     var historicoList by remember { mutableStateOf<List<TimeRecordResponse>>(emptyList()) }
     var isListLoading by remember { mutableStateOf(false) }
+    var refreshTrigger by remember { mutableStateOf(0) }
+
+    // --- ESTADOS DO COMPROVANTE ---
+    var showComprovante by remember { mutableStateOf(false) }
+    var pontoSelecionado by remember { mutableStateOf<TimeRecordResponse?>(null) }
+
     val coroutineScope = rememberCoroutineScope()
 
     fun carregarHistorico() {
@@ -333,16 +311,11 @@ fun HomeScreen(
             try {
                 val tokenFinal = if (userToken.startsWith("Bearer ")) userToken else "Bearer $userToken"
                 val response = RetrofitClient.instance.obterHistorico(tokenFinal)
-
                 if (response.data != null) {
-                    // --- ORDENAÇÃO DECRESCENTE (Mais recente no topo) ---
-                    val listaOrdenada = response.data.sortedWith(
+                    historicoList = response.data.sortedWith(
                         compareByDescending<TimeRecordResponse> { it.date }
                             .thenByDescending { it.time }
-                    )
-
-                    // --- LIMITA A 10 REGISTROS ---
-                    historicoList = listaOrdenada.take(10)
+                    ).take(10)
                 }
             } catch (e: Exception) {
                 Log.e("HomeAPI", "Erro ao carregar histórico", e)
@@ -352,144 +325,146 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(Unit, refreshTrigger) {
-        carregarHistorico()
-    }
+    LaunchedEffect(Unit, refreshTrigger) { carregarHistorico() }
+    LaunchedEffect(Unit) { permissionsState.launchMultiplePermissionRequest() }
 
-    LaunchedEffect(Unit) {
-        permissionsState.launchMultiplePermissionRequest()
+    // --- DIALOG DO COMPROVANTE ---
+    if (showComprovante && pontoSelecionado != null) {
+        ComprovanteDialog(
+            ponto = pontoSelecionado!!,
+            userName = userName,
+            onDismiss = { showComprovante = false }
+        )
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFFF5F5F5)) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // HEADER
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .padding(vertical = 12.dp, horizontal = 24.dp)
-                    .height(60.dp)
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.logopontoall),
-                    contentDescription = "Logo",
-                    modifier = Modifier.align(Alignment.Center).height(40.dp)
-                )
-                IconButton(
-                    onClick = onBackToLogin,
-                    modifier = Modifier.align(Alignment.CenterEnd)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-                        contentDescription = "Sair",
-                        tint = Color(0xFFB10C43)
-                    )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(modifier = Modifier.fillMaxWidth().background(Color.White).padding(vertical = 12.dp, horizontal = 24.dp)) {
+                Image(painter = painterResource(id = R.drawable.logopontoall), contentDescription = "Logo", modifier = Modifier.align(Alignment.Center).height(40.dp))
+                IconButton(onClick = onBackToLogin, modifier = Modifier.align(Alignment.CenterEnd)) {
+                    Icon(imageVector = Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Sair", tint = Color(0xFFB10C43))
                 }
             }
-
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("Olá, $userName! 👋", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF021B2B))
             Spacer(modifier = Modifier.height(24.dp))
 
-            // SAUDAÇÃO
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
-            ) {
-                Text(
-                    text = "Olá, $userName! 👋",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF021B2B)
-                )
-                Text(
-                    text = "Vamos registrar seu ponto hoje?",
-                    fontSize = 14.sp,
-                    color = Color.Gray
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // BOTÃO
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Button(
-                        onClick = {
-                            if (!isGlobalLoading) {
-                                if (permissionsState.allPermissionsGranted) {
-                                    onMarcarPontoClick()
-                                } else {
-                                    permissionsState.launchMultiplePermissionRequest()
-                                }
+            // Botão de Registro
+            Button(
+                onClick = {
+                    if (!isGlobalLoading) {
+                        if (permissionsState.allPermissionsGranted) {
+                            onMarcarPontoClick(userToken, userName) { pontoCriado ->
+                                // SUCESSO NO REGISTRO:
+                                refreshTrigger++         // 1. Atualiza lista
+                                pontoSelecionado = pontoCriado // 2. Define dados
+                                showComprovante = true   // 3. Abre comprovante
                             }
-                        },
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB10C43))
-                    ) {
-                        if (isGlobalLoading) {
-                            CircularProgressIndicator(
-                                color = Color.White,
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("ENVIANDO...", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         } else {
-                            Text("REGISTRAR PONTO AGORA", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            permissionsState.launchMultiplePermissionRequest()
                         }
                     }
-                }
+                },
+                modifier = Modifier.fillMaxWidth(0.9f).height(56.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB10C43))
+            ) {
+                if (isGlobalLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                else Text("REGISTRAR PONTO AGORA", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.height(32.dp))
-
-            // LISTA TÍTULO
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Histórico Recente (Últimos 10)",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF021B2B)
-                )
-                IconButton(onClick = { carregarHistorico() }) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "Atualizar", tint = Color.Gray)
-                }
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Histórico Recente", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF021B2B))
+                IconButton(onClick = { carregarHistorico() }) { Icon(Icons.Filled.Refresh, "Atualizar", tint = Color.Gray) }
             }
-
             Spacer(modifier = Modifier.height(8.dp))
 
-            // LISTA DE ITENS
-            if (isListLoading && historicoList.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFFB10C43))
+            LazyColumn(modifier = Modifier.padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(historicoList) { ponto ->
+                    HistoricoItem(ponto, onClick = {
+                        // CLIQUE NO ITEM DO HISTÓRICO
+                        pontoSelecionado = ponto
+                        showComprovante = true
+                    })
                 }
-            } else if (historicoList.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
-                    Text("Nenhum registro encontrado ainda.", color = Color.Gray)
+                item { Spacer(modifier = Modifier.height(24.dp)) }
+            }
+        }
+    }
+}
+
+@Composable
+fun HistoricoItem(ponto: TimeRecordResponse, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }, // Torna o card clicável
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row {
+                Icon(Icons.Filled.DateRange, null, tint = Color.Gray)
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(ponto.date ?: "--/--", fontWeight = FontWeight.Medium, color = Color(0xFF021B2B))
+                    Text("ID: ${ponto.id}", fontSize = 12.sp, color = Color.LightGray)
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+            }
+            Row {
+                Icon(Icons.Filled.AccessTime, null, tint = Color(0xFFB10C43))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(ponto.time ?: "--:--", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF021B2B))
+            }
+        }
+    }
+}
+
+// --- COMPONENTE VISUAL DO COMPROVANTE ---
+@Composable
+fun ComprovanteDialog(ponto: TimeRecordResponse, userName: String, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(Icons.Filled.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(64.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("COMPROVANTE DE PONTO", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF021B2B))
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(thickness = 1.dp, color = Color.LightGray)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Detalhes
+                DetalheLinha("Colaborador:", userName)
+                DetalheLinha("Data:", ponto.date ?: "--")
+                DetalheLinha("Horário:", ponto.time ?: "--")
+
+                // Localização formatada
+                val lat = String.format("%.4f", ponto.latitude)
+                val lon = String.format("%.4f", ponto.longitude)
+                DetalheLinha("Localização:", "$lat, $lon")
+
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(thickness = 1.dp, color = Color.LightGray)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("ID Registro: #${ponto.id}", fontSize = 12.sp, color = Color.LightGray)
+                Text("Status: SINCRONIZADO", fontSize = 12.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF021B2B)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    items(historicoList) { ponto ->
-                        HistoricoItem(ponto)
-                    }
-                    item { Spacer(modifier = Modifier.height(24.dp)) }
+                    Text("FECHAR")
                 }
             }
         }
@@ -497,45 +472,12 @@ fun HomeScreen(
 }
 
 @Composable
-fun HistoricoItem(ponto: TimeRecordResponse) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+fun DetalheLinha(titulo: String, valor: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.DateRange, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = ponto.date ?: "--/--",
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF021B2B)
-                    )
-                    Text(
-                        text = "ID: ${ponto.id}",
-                        fontSize = 12.sp,
-                        color = Color.LightGray
-                    )
-                }
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.AccessTime, contentDescription = null, tint = Color(0xFFB10C43), modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = ponto.time ?: "--:--",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    color = Color(0xFF021B2B)
-                )
-            }
-        }
+        Text(titulo, color = Color.Gray, fontSize = 14.sp)
+        Text(valor, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF021B2B))
     }
 }
