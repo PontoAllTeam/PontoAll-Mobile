@@ -37,7 +37,8 @@ data class TimeRecordResponse(
     val time: String?,
     val latitude: Double,
     val longitude: Double,
-    val photo: String?
+    val photo: String?,
+    val justification: String? = null
 )
 
 data class ApiResponse<T>(

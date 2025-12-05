@@ -98,12 +98,10 @@ class MainActivity : ComponentActivity() {
                     AppNavigator(
                         isLoading = isProcessing,
                         onMarcarPonto = { token, nome, userId, callback ->
-                            // --- CORREÇÃO AQUI: Removemos o "this." para evitar erro de escopo ---
                             currentToken = token
                             currentUserName = nome
                             currentUserId = userId
                             onPontoRegistradoCallback = callback
-                            // --------------------------------------------------------------------
 
                             isProcessing = true
                             handleMarcarPonto()
@@ -202,7 +200,7 @@ class MainActivity : ComponentActivity() {
                 time = timeFormat.format(agora),
                 latitude = latFinal,
                 longitude = lonFinal,
-                userId = this@MainActivity.currentUserId, // Aqui usamos this@MainActivity para garantir o contexto
+                userId = this@MainActivity.currentUserId,
                 workScheduleId = workScheduleIdTeste,
                 dailyRecordId = 0,
                 photo = fotoString,
@@ -218,13 +216,15 @@ class MainActivity : ComponentActivity() {
                     if (response.code == 200 || response.code == 201 || response.message?.contains("sucesso", ignoreCase = true) == true) {
                         Toast.makeText(this@MainActivity, "Ponto Registrado! ✅", Toast.LENGTH_SHORT).show()
 
+                        // AQUI: Garantimos que o objeto criado tenha a justificativa para exibir no comprovante
                         val pontoCriado = response.data ?: TimeRecordResponse(
                             id = 0,
                             date = novoPonto.date,
                             time = novoPonto.time,
                             latitude = novoPonto.latitude,
                             longitude = novoPonto.longitude,
-                            photo = null
+                            photo = null,
+                            justification = novoPonto.justification // <--- Repassando a justificativa
                         )
 
                         onPontoRegistradoCallback?.invoke(pontoCriado)
@@ -477,6 +477,10 @@ fun ComprovanteDialog(ponto: TimeRecordResponse, userName: String, onDismiss: ()
                 val lat = String.format("%.4f", ponto.latitude)
                 val lon = String.format("%.4f", ponto.longitude)
                 DetalheLinha("Localização:", "$lat, $lon")
+
+                // --- MUDANÇA AQUI: Exibindo a Justificativa (ou em branco) ---
+                val justificativaTexto = if (ponto.justification.isNullOrBlank()) "" else ponto.justification
+                DetalheLinha("Justificativa:", justificativaTexto!!)
 
                 Spacer(modifier = Modifier.height(16.dp))
                 HorizontalDivider(thickness = 1.dp, color = Color.LightGray)
