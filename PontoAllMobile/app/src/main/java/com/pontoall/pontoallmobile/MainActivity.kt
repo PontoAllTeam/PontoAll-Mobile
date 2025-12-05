@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,7 +36,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -66,20 +66,21 @@ class MainActivity : ComponentActivity() {
     // Variáveis globais de sessão
     private var currentToken: String = ""
     private var currentUserName: String = ""
-    private var currentUserId: Int = 0 // <--- ALTERADO: Variável para guardar o ID real
+    private var currentUserId: Int = 0
 
-    // Estado global de carregamento
+    // Estado global de carregamento e controle do Dialog
     private var isProcessing by mutableStateOf(false)
+    private var showJustificationDialog by mutableStateOf(false)
 
-    // Callback atualizado: Agora ele devolve o objeto do Ponto para mostrar o comprovante
     private var onPontoRegistradoCallback: ((TimeRecordResponse) -> Unit)? = null
 
     private val takePictureLauncher = registerForActivityResult(
         ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
-            Log.d("MainActivity", "Foto capturada. Iniciando envio...")
-            enviarDadosParaAPI()
+            Log.d("MainActivity", "Foto capturada. Solicitando justificativa...")
+            // Ao tirar a foto com sucesso, abre o diálogo em vez de enviar direto
+            showJustificationDialog = true
         } else {
             Toast.makeText(this, "Foto cancelada.", Toast.LENGTH_SHORT).show()
             isProcessing = false
@@ -92,19 +93,40 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                AppNavigator(
-                    isLoading = isProcessing,
-                    // <--- ALTERADO: Callback agora recebe (token, nome, userId, callback)
-                    onMarcarPonto = { token, nome, userId, callback ->
-                        this.currentToken = token
-                        this.currentUserName = nome
-                        this.currentUserId = userId // <--- ALTERADO: Guarda o ID recebido do Login
-                        this.onPontoRegistradoCallback = callback
+                // Box permite sobrepor o Dialogo em cima do AppNavigator
+                Box(modifier = Modifier.fillMaxSize()) {
+                    AppNavigator(
+                        isLoading = isProcessing,
+                        onMarcarPonto = { token, nome, userId, callback ->
+                            // --- CORREÇÃO AQUI: Removemos o "this." para evitar erro de escopo ---
+                            currentToken = token
+                            currentUserName = nome
+                            currentUserId = userId
+                            onPontoRegistradoCallback = callback
+                            // --------------------------------------------------------------------
 
-                        isProcessing = true
-                        handleMarcarPonto()
+                            isProcessing = true
+                            handleMarcarPonto()
+                        }
+                    )
+
+                    // LÓGICA DO DIÁLOGO DE JUSTIFICATIVA
+                    if (showJustificationDialog) {
+                        JustificationDialog(
+                            onConfirm = { justificativaDigitada ->
+                                showJustificationDialog = false
+                                // Envia para a API com o texto (pode ser vazio se ele pulou)
+                                enviarDadosParaAPI(justificativaDigitada)
+                            },
+                            onDismiss = {
+                                // Se o usuário clicar fora ou cancelar, cancelamos o processo
+                                showJustificationDialog = false
+                                isProcessing = false
+                                Toast.makeText(this@MainActivity, "Registro cancelado.", Toast.LENGTH_SHORT).show()
+                            }
+                        )
                     }
-                )
+                }
             }
         }
     }
@@ -163,10 +185,9 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) { "" }
     }
 
-    private fun enviarDadosParaAPI() {
+    private fun enviarDadosParaAPI(justificativa: String) {
         val location = this.lastLocation
-        // val userIdTeste = 1 // <--- ALTERADO: Removido valor hardcoded
-        val workScheduleIdTeste = 0 // Backend ignora, pode mandar 0
+        val workScheduleIdTeste = 0
         val latFinal = location?.latitude ?: -20.469394
         val lonFinal = location?.longitude ?: -50.635562
         val agora = Date()
@@ -181,10 +202,11 @@ class MainActivity : ComponentActivity() {
                 time = timeFormat.format(agora),
                 latitude = latFinal,
                 longitude = lonFinal,
-                userId = this@MainActivity.currentUserId, // <--- ALTERADO: Usando o ID real do usuário
+                userId = this@MainActivity.currentUserId, // Aqui usamos this@MainActivity para garantir o contexto
                 workScheduleId = workScheduleIdTeste,
                 dailyRecordId = 0,
-                photo = fotoString
+                photo = fotoString,
+                justification = justificativa
             )
 
             try {
@@ -230,14 +252,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigator(
     isLoading: Boolean,
-    // <--- ALTERADO: Adicionado parâmetro Int (userId) na assinatura do callback
     onMarcarPonto: (String, String, Int, (TimeRecordResponse) -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     var telaAtual by remember { mutableStateOf("login") }
     var userToken by remember { mutableStateOf("") }
     var userName by remember { mutableStateOf("") }
-    var userId by remember { mutableStateOf(0) } // <--- ALTERADO: Estado para guardar o ID
+    var userId by remember { mutableStateOf(0) }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -257,7 +278,7 @@ fun AppNavigator(
                             if (response.code == 200 || response.message?.contains("sucesso", ignoreCase = true) == true) {
                                 userToken = response.data?.token ?: ""
                                 userName = response.data?.user?.name ?: "Colaborador"
-                                userId = response.data?.user?.id ?: 0 // <--- ALTERADO: Obtendo o ID do usuário
+                                userId = response.data?.user?.id ?: 0
 
                                 Toast.makeText(context, "Bem vindo, $userName!", Toast.LENGTH_SHORT).show()
                                 telaAtual = "home"
@@ -275,7 +296,7 @@ fun AppNavigator(
         "home" -> {
             HomeScreen(
                 userName = userName,
-                userId = userId, // <--- ALTERADO: Passando o ID para a Home
+                userId = userId,
                 userToken = userToken,
                 isGlobalLoading = isLoading,
                 onMarcarPontoClick = onMarcarPonto,
@@ -290,10 +311,9 @@ fun AppNavigator(
 @Composable
 fun HomeScreen(
     userName: String,
-    userId: Int, // <--- ALTERADO: Recebendo o ID
+    userId: Int,
     userToken: String,
     isGlobalLoading: Boolean,
-    // <--- ALTERADO: Adicionado Int na assinatura do callback
     onMarcarPontoClick: (String, String, Int, (TimeRecordResponse) -> Unit) -> Unit,
     onBackToLogin: () -> Unit
 ) {
@@ -306,7 +326,6 @@ fun HomeScreen(
     var isListLoading by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableStateOf(0) }
 
-    // --- ESTADOS DO COMPROVANTE ---
     var showComprovante by remember { mutableStateOf(false) }
     var pontoSelecionado by remember { mutableStateOf<TimeRecordResponse?>(null) }
 
@@ -354,9 +373,6 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(24.dp))
             Text("Olá, $userName! 👋", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF021B2B))
 
-            // Debug visual (Opcional, pode remover depois)
-            // Text("ID Usuário: $userId", fontSize = 12.sp, color = Color.Gray)
-
             Spacer(modifier = Modifier.height(24.dp))
 
             // Botão de Registro
@@ -364,7 +380,6 @@ fun HomeScreen(
                 onClick = {
                     if (!isGlobalLoading) {
                         if (permissionsState.allPermissionsGranted) {
-                            // <--- ALTERADO: Passando o userId aqui
                             onMarcarPontoClick(userToken, userName, userId) { pontoCriado ->
                                 refreshTrigger++
                                 pontoSelecionado = pontoCriado
@@ -436,7 +451,6 @@ fun HistoricoItem(ponto: TimeRecordResponse, onClick: () -> Unit) {
     }
 }
 
-// --- COMPONENTE VISUAL DO COMPROVANTE ---
 @Composable
 fun ComprovanteDialog(ponto: TimeRecordResponse, userName: String, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
@@ -456,12 +470,10 @@ fun ComprovanteDialog(ponto: TimeRecordResponse, userName: String, onDismiss: ()
                 HorizontalDivider(thickness = 1.dp, color = Color.LightGray)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Detalhes
                 DetalheLinha("Colaborador:", userName)
                 DetalheLinha("Data:", ponto.date ?: "--")
                 DetalheLinha("Horário:", ponto.time?.substringBefore(".") ?: "--")
 
-                // Localização formatada
                 val lat = String.format("%.4f", ponto.latitude)
                 val lon = String.format("%.4f", ponto.longitude)
                 DetalheLinha("Localização:", "$lat, $lon")
@@ -493,5 +505,87 @@ fun DetalheLinha(titulo: String, valor: String) {
     ) {
         Text(titulo, color = Color.Gray, fontSize = 14.sp)
         Text(valor, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF021B2B))
+    }
+}
+
+// --- NOVO COMPONENTE: DIÁLOGO DE JUSTIFICATIVA ---
+@Composable
+fun JustificationDialog(
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var text by remember { mutableStateOf("") }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Ícone e Título
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = null,
+                    tint = Color(0xFFB10C43),
+                    modifier = Modifier.size(48.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Deseja justificar?",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = Color(0xFF021B2B)
+                )
+
+                Text(
+                    text = "Opcional: Informe o motivo se o horário for diferente do esperado.",
+                    fontSize = 14.sp,
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Campo de Texto
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("Motivo (Ex: Trânsito, Médico)") },
+                    modifier = Modifier.fillMaxWidth().height(120.dp),
+                    maxLines = 5,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFFB10C43),
+                        focusedLabelColor = Color(0xFFB10C43)
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Botões
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Botão Pular/Enviar sem
+                    TextButton(onClick = { onConfirm("") }) {
+                        Text("Pular / Sem motivo", color = Color.Gray)
+                    }
+
+                    // Botão Enviar com texto
+                    Button(
+                        onClick = { onConfirm(text) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB10C43))
+                    ) {
+                        Text("Enviar", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }
