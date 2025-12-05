@@ -216,7 +216,6 @@ class MainActivity : ComponentActivity() {
                     if (response.code == 200 || response.code == 201 || response.message?.contains("sucesso", ignoreCase = true) == true) {
                         Toast.makeText(this@MainActivity, "Ponto Registrado! ✅", Toast.LENGTH_SHORT).show()
 
-                        // AQUI: Garantimos que o objeto criado tenha a justificativa para exibir no comprovante
                         val pontoCriado = response.data ?: TimeRecordResponse(
                             id = 0,
                             date = novoPonto.date,
@@ -224,7 +223,7 @@ class MainActivity : ComponentActivity() {
                             latitude = novoPonto.latitude,
                             longitude = novoPonto.longitude,
                             photo = null,
-                            justification = novoPonto.justification // <--- Repassando a justificativa
+                            justification = novoPonto.justification
                         )
 
                         onPontoRegistradoCallback?.invoke(pontoCriado)
@@ -342,15 +341,19 @@ fun HomeScreen(
                         compareByDescending<TimeRecordResponse> { it.date }
                             .thenByDescending { it.time }
                     ).take(10)
+                    // Feedback para o usuário
+                    Toast.makeText(context, "Histórico atualizado!", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Log.e("HomeAPI", "Erro ao carregar histórico", e)
+                Toast.makeText(context, "Erro ao atualizar.", Toast.LENGTH_SHORT).show()
             } finally {
                 isListLoading = false
             }
         }
     }
 
+    // Carrega ao abrir a tela ou quando bater ponto
     LaunchedEffect(Unit, refreshTrigger) { carregarHistorico() }
     LaunchedEffect(Unit) { permissionsState.launchMultiplePermissionRequest() }
 
@@ -399,9 +402,27 @@ fun HomeScreen(
             }
 
             Spacer(modifier = Modifier.height(32.dp))
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+
+            // --- CABEÇALHO DO HISTÓRICO COM LOADING VISUAL ---
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically // Alinha verticalmente
+            ) {
                 Text("Histórico Recente", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF021B2B))
-                IconButton(onClick = { carregarHistorico() }) { Icon(Icons.Filled.Refresh, "Atualizar", tint = Color.Gray) }
+
+                // Se estiver carregando, mostra o spinner, senão mostra o botão
+                if (isListLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp,
+                        color = Color(0xFFB10C43)
+                    )
+                } else {
+                    IconButton(onClick = { carregarHistorico() }) {
+                        Icon(Icons.Filled.Refresh, "Atualizar", tint = Color.Gray)
+                    }
+                }
             }
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -478,7 +499,7 @@ fun ComprovanteDialog(ponto: TimeRecordResponse, userName: String, onDismiss: ()
                 val lon = String.format("%.4f", ponto.longitude)
                 DetalheLinha("Localização:", "$lat, $lon")
 
-                // --- MUDANÇA AQUI: Exibindo a Justificativa (ou em branco) ---
+                // Exibindo a Justificativa (ou em branco)
                 val justificativaTexto = if (ponto.justification.isNullOrBlank()) "" else ponto.justification
                 DetalheLinha("Justificativa:", justificativaTexto!!)
 
